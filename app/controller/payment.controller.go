@@ -89,11 +89,10 @@ func CreateNewPayment (c *fiber.Ctx) error {
 	}
 
 	times := fmt.Sprintf("Dibayar pada tanggal - %d", time.Now().Unix())
-	MidtransResp, err := utils.CreateSnapMidtrans(int(body.Amount), int(body.OrderID))
+	MidtransResp, err := utils.CreateSnapMidtrans(int(checkouts.Nominal), int(body.OrderID))
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
-	
 	result := models.Payment{
 		ID: body.ID,
 		CheckoutID: body.CheckoutID,
@@ -123,15 +122,11 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		tx.Rollback()
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
-
-	if err := tx.Model(&orders).Update("status", "success!").Error; err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
-	}
-
-	if err := tx.Model(&checkouts).Update("status", "success!").Error; err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
-	}
-
 	responsePayment := DatabaseIntoPayment(result)
 	return utils.JsonWithSuccess(c, responsePayment, fiber.StatusOK, "Berhasil membuat payment!")
+}
+func WebHookForPayments (c *fiber.Ctx) error {
+	payload := map[string]interface{}{}
+
+	
 }

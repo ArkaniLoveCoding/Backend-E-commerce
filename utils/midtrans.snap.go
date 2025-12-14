@@ -3,8 +3,12 @@ package utils
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 type MidtransSnapResponse struct {
@@ -12,40 +16,52 @@ type MidtransSnapResponse struct {
 	RedirectURL string `json:"redirect_url"`
 }
 
-func CreateSnapMidtrans (amount int, orderID int) (*MidtransSnapResponse, error) {
+func CreateSnapMidtrans(amount int, orderID int) (*MidtransSnapResponse, error) {
 	payload := map[string]interface{}{
-		"transactions_id": map[string]interface{}{
-			"order_id": orderID,
-			"amount": amount,
+		"transaction_details": map[string]interface{}{
+			"order_id":     fmt.Sprintf("ORDER-%d", orderID),
+			"gross_amount": amount,
 		},
 	}
 
-	request, err := json.Marshal(payload)
+	requestBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	httpRequest, err := http.NewRequest(
+	godotenv.Load()
+
+	req, err := http.NewRequest(
 		"POST",
-		os.Getenv("MIDTRANSBASEURL")+"/v1/snap/transactions",
-		bytes.NewBuffer(request),
+		os.Getenv("MIDTRANSBASEURL")+"/snap/v1/transactions",
+		bytes.NewBuffer(requestBody),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	httpRequest.SetBasicAuth(os.Getenv("MIDTRANSSERVERKEY"), "")
-	httpRequest.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(os.Getenv("MIDTRANSSERVERKEY"), "")
+	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
-	resp, err := client.Do(httpRequest)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-
 	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	fmt.Println("MIDTRANS STATUS:", resp.StatusCode)
+	fmt.Println("MIDTRANS BODY:", string(bodyBytes))
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("midtrans error: %s", string(bodyBytes))
+	}
+
 	var result MidtransSnapResponse
-	json.NewDecoder(resp.Body).Decode(&resp)
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return nil, err
+	}
 
 	return &result, nil
 }
