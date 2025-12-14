@@ -12,5 +12,6 @@ func HandlePaymentsRoutes(app *fiber.App) error {
 	
 	// stockLogo endpoints 
 	apiRoutes.Post("/payments", middleware.AuthMiddleware, controller.CreateNewPayment)
+	apiRoutes.Post("/payments/webhook", middleware.AuthMiddleware, controller.WebHookForPayments)
 	return nil
 }

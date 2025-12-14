@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -128,5 +129,56 @@ func CreateNewPayment (c *fiber.Ctx) error {
 func WebHookForPayments (c *fiber.Ctx) error {
 	payload := map[string]interface{}{}
 
+	order_id := payload["order_id"].(string)
+	transaction_id := payload["transaction_id"].(string)
+	transaction_status := payload["transaction_status"].(string)
+	payment_type := payload["payment_type"].(string)
+	transaction_time := payload["transaction_time"].(string)
 	
+	convertInt, err := strconv.Atoi(order_id)
+	if err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	var orders models.Order
+	if err := database.Database.DB.Find(&orders, "id = ?", uint(convertInt)).Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	var payments models.Payment
+	if err := database.Database.DB.Where("order_id = ?").First(&payments, uint(convertInt)).Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	dbPaymentStatus := "pending"
+	switch transaction_status {
+		case "pending":
+			dbPaymentStatus = "pending"
+		case "settlement":
+			dbPaymentStatus = "success to paid!"
+		case "expire":
+			dbPaymentStatus = "failed! because the transactions has been expired.."
+		case "capture":
+			dbPaymentStatus = "success to paid!"
+		case "cancel":
+			dbPaymentStatus = "failed!"
+		case "deny":
+			dbPaymentStatus = "failed!"
+	}
+
+	paid, err := time.Parse("2006-01-02 15:04:05", transaction_time)
+	if err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	if err := database.Database.DB.Model(&payments).Updates(map[string]interface{}{
+		"status": dbPaymentStatus,
+		"provider_ref": transaction_id,
+		"paid": paid,
+		"payment_method": payment_type,
+	}).Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return c.SendStatus(200)
 }
