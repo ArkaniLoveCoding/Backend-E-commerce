@@ -119,7 +119,7 @@ func CreateNewPayment (c *fiber.Ctx) error {
 	}
 
 	var products models.Product
-	if err := tx.Model(&products).Where("id = ?", orders.ProductRefer).Update("stock - ?", gorm.Expr("stock", - orders.Quantity)).Error; err != nil {
+	if err := tx.Model(&products).Where("id = ?", orders.ProductRefer).Update("stock", gorm.Expr("stock - ?", - orders.Quantity)).Error; err != nil {
 		tx.Rollback()
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}

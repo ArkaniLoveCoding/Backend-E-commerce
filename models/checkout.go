@@ -9,4 +9,5 @@ type Checkout struct {
 	OrderRefer   int   `json:"order_id"`
 	Order 		*Order  `gorm:"foreignKey:OrderRefer"`
 	Nominal 	float64  `json:"nominal"`
+	Status 		string 	`json:"status"`
 }

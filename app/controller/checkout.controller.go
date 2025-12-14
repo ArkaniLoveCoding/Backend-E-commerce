@@ -21,6 +21,7 @@ type Checkout struct {
 	OrderRefer   int   `json:"order_id" validate:"required"`
 	Order		*Order  `json:"order"`
 	Nominal 	float64  `json:"nominal" validate:"required"`
+	Status 		string 	 `json:"status"`
 }
 
 func ResponeToCheckout (checkout models.Checkout, order Order) Checkout {
@@ -30,6 +31,7 @@ func ResponeToCheckout (checkout models.Checkout, order Order) Checkout {
 		OrderRefer: checkout.OrderRefer,
 		Order: &order,
 		Nominal: checkout.Nominal,
+		Status: checkout.Status,
 	}
 }
 
@@ -69,6 +71,7 @@ func CreateCheckout (c *fiber.Ctx) error {
 	paramsFinal := models.Checkout{
 		OrderRefer: checkoutParams.OrderRefer,
 		Nominal: order.TotalOrder,
+		Status: "pending",
 	}
 
 	tx := database.Database.DB.Begin()
@@ -212,6 +215,7 @@ func UpdateCheckout (c *fiber.Ctx) error {
 		OrderRefer   int   `json:"order_id" validate:"required"`
 		Order		Order  `json:"order"`
 		Nominal 	float64  `json:"nominal" validate:"required"`
+		Status 		string 	 `json:"status"`
 	}
 
 	var update UpdateParams
