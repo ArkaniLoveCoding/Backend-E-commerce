@@ -50,7 +50,7 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		CheckoutID    uint	`json:"checkout_id" validate:"required"`
 		OrderID       uint	`json:"order_id" validate:"required"`
 		Provider      string	`json:"provider"`
-		PaymentMethod string	`json:"payment_method"`
+		PaymentMethod string	`json:"payment_method" validate:"required"`
 		Amount        int32		`json:"amount"`	
 		Status        string	`json:"status"`
 		ProviderRef   string	`json:"provider_ref"`
