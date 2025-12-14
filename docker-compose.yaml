@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: dockerFile
+    container_name: fiber_app
+    ports:
+      - "9000:9000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_USER: postgres
+      DB_PASS: 12345
+      DB_NAME: fiber_project
+      DB_PORT: 5432
+    restart: always
+
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+      POSTGRES_DB: fiber_project
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fiber_project"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db_data:
