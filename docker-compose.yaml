@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: dockerFile
-    container_name: fiber_app
+    container_name: fiber_application
     ports:
       - "9000:9000"
     depends_on:
@@ -21,7 +21,7 @@ services:
 
   db:
     image: postgres:15
-    container_name: postgres_db
+    container_name: postgres_database
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 12345

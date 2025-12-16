@@ -129,13 +129,24 @@ func CreateNewPayment (c *fiber.Ctx) error {
 func WebHookForPayments (c *fiber.Ctx) error {
 	payload := map[string]interface{}{}
 
+	if err := c.BodyParser(&payload); err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal memvalidasi body!")
+	}
+
 	order_id := payload["order_id"].(string)
-	transaction_id := payload["transaction_id"].(string)
+	final_order_id := string(order_id)
+
 	transaction_status := payload["transaction_status"].(string)
+	final_transaction_status := string(transaction_status)
+
 	payment_type := payload["payment_type"].(string)
+	final_payment_type := string(payment_type)
+
 	transaction_time := payload["transaction_time"].(string)
+	final_transaction_time := string(transaction_time)
+
 	
-	convertInt, err := strconv.Atoi(order_id)
+	convertInt, err := strconv.Atoi(final_order_id)
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -150,7 +161,7 @@ func WebHookForPayments (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	paid, err := time.Parse("2006-01-02 15:04:05", transaction_time)
+	paid, err := time.Parse("2006-01-02 15:04:05", final_transaction_time)
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -158,7 +169,7 @@ func WebHookForPayments (c *fiber.Ctx) error {
 
 	dbPaymentStatus := "pending"
 
-	switch transaction_status {
+	switch final_transaction_status {
 		case "pending":
 			dbPaymentStatus = "pending"
 		case "settlement":
@@ -215,9 +226,8 @@ func WebHookForPayments (c *fiber.Ctx) error {
 
 	if err := database.Database.DB.Model(&payments).Updates(map[string]interface{}{
 		"status": dbPaymentStatus,
-		"provider_ref": transaction_id,
 		"paid": paid,
-		"payment_method": payment_type,
+		"payment_method": final_payment_type,
 	}).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
