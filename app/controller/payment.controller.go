@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -80,7 +81,7 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		})
 	}
 
-
+	var payments models.Payment
 	var checkouts models.Checkout
 	if err := FindIdCheckout(int(body.CheckoutID), &checkouts); err != nil {
 		return  utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
@@ -134,8 +135,22 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		tx.Rollback()
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
-	responsePayment := DatabaseIntoPayment(result, ResponseToOrder(orders, *body.Order.User, *body.Order.Product))
+	
+	responseUser := CreateUserResponse(*orders.User)
+	responeProduct := CreateProductResponse(*orders.Product)
+	responseOrder := ResponseToOrder(orders, responseUser, responeProduct)
+	responsePayment := DatabaseIntoPayment(payments, responseOrder)
+
 	return utils.JsonWithSuccess(c, responsePayment, fiber.StatusOK, "Berhasil membuat payment!")
+}
+func GetOrderId (id int, order *models.Payment) error {
+	if err := database.Database.DB.Find(&order, "id = ?", id).Error; err != nil {
+		return nil
+	}
+	if id == 0 {
+		return errors.New("Tidak ada id yang ditemukan!")
+	}
+	return nil
 }
 func WebHookForPayments (c *fiber.Ctx) error {
 	payload := map[string]interface{}{}
@@ -165,12 +180,12 @@ func WebHookForPayments (c *fiber.Ctx) error {
 	}
 
 	var orders models.Order
-	if err := database.Database.DB.Find(&orders, "id = ?", order_id).Error; err != nil {
+	if err := FindIdOrder(order_id, &orders); err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	var payments models.Payment
-	if err := database.Database.DB.Find(&payments, "order_id = ?", order_id).Error; err != nil {
+	if err := GetOrderId(order_id, &payments); err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 

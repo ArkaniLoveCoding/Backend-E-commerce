@@ -22,7 +22,7 @@ func GenerateJwtToken(id uint, email string, role string) (string, error) {
 		"user_id": id,
 		"email": email,
 		"role": role,
-		"exp": time.Now().Add(time.Hour * 72).Unix(),
+		"exp": time.Now().Add(time.Hour * 180).Unix(),
 	})
 	tokenString, err := jwt.SignedString(Secret_Key)
 	if err != nil {
