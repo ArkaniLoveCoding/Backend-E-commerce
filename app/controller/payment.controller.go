@@ -18,6 +18,7 @@ type Payment struct {
 	ID            uint	`json:"id" gorm:"primaryKey"`
 	CheckoutID    uint	`json:"checkout_id"`
 	OrderID       uint	`json:"order_id"`
+	Order 		  *Order `json:"order"`
 	Provider      string	`json:"provider"`
 	PaymentMethod string	`json:"payment_method"`
 	Amount        int32		`json:"amount"`	
@@ -28,11 +29,12 @@ type Payment struct {
 	CreatedAt     time.Time
 }
 
-func DatabaseIntoPayment (payment models.Payment) Payment {
+func DatabaseIntoPayment (payment models.Payment, order Order) Payment {
 	return Payment{
 		ID: payment.ID,
 		CheckoutID: payment.CheckoutID,
 		OrderID: payment.OrderID,
+		Order: &order,
 		Provider: payment.Provider,
 		PaymentMethod: payment.PaymentMethod,
 		Amount: payment.Amount,
@@ -49,6 +51,7 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		ID            uint	`json:"id" gorm:"primaryKey"`
 		CheckoutID    uint	`json:"checkout_id" validate:"required"`
 		OrderID       uint	`json:"order_id" validate:"required"`
+		Order 		  *Order `json:"order"`
 		Provider      string	`json:"provider"`
 		PaymentMethod string	`json:"payment_method" validate:"required"`
 		Amount        int32		`json:"amount"`	
@@ -88,6 +91,16 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
+	var products models.Product
+	if err := findID(orders.ProductRefer, &products); err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan id product!")
+	}
+
+	var users models.User
+	if err := FindIdUser(orders.UserRefer, &users); err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan id user!")
+	}
+
 	times := fmt.Sprintf("Dibayar pada tanggal - %d", time.Now().Unix())
 	MidtransResp, err := utils.CreateSnapMidtrans(int(checkouts.Nominal), int(body.OrderID))
 	if err != nil {
@@ -117,12 +130,11 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	var products models.Product
 	if err := tx.Model(&products).Where("id = ?", orders.ProductRefer).Update("stock", gorm.Expr("stock - ?", - orders.Quantity)).Error; err != nil {
 		tx.Rollback()
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
-	responsePayment := DatabaseIntoPayment(result)
+	responsePayment := DatabaseIntoPayment(result, ResponseToOrder(orders, *body.Order.User, *body.Order.Product))
 	return utils.JsonWithSuccess(c, responsePayment, fiber.StatusOK, "Berhasil membuat payment!")
 }
 func WebHookForPayments (c *fiber.Ctx) error {

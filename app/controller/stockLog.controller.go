@@ -18,7 +18,9 @@ type StockLog struct {
 	ProductRefer int `json:"product_id"`
 	Product 	*Product `json:"product"`
 	PaymentRefer int 	`json:"payment_id"`
-	Payment 	*Payment	`gorm:"foreignKey:PaymentRefer"`
+	Payment 	*Payment	`json:"payment"`
+	OrderRefer 	int 	`json:"order_id"`
+	Order 		*Order	`json:"order"`
 	CreatedAt 	time.Time
 	Note 		string 	`json:"note"`
 	Change 		int32 	`json:"change"`
@@ -27,13 +29,15 @@ type StockLog struct {
 	Type 		string 	`json:"type"`	
 }
 
-func DataBaseIntoStock (stock models.StockLog, product Product, payment Payment) StockLog {
+func DataBaseIntoStock (stock models.StockLog, product Product, payment Payment, order Order) StockLog {
 	return StockLog{
 		ID: stock.ID,
 		ProductRefer: stock.ProductRefer,
 		Product: &product,
 		PaymentRefer: stock.PaymentRefer,
 		Payment: &payment,
+		OrderRefer: stock.OrderRefer,
+		Order: &order,
 		CreatedAt: stock.Product.CreatedAt,
 		Note: stock.Note,
 		Change: stock.Change,
@@ -45,9 +49,8 @@ func DataBaseIntoStock (stock models.StockLog, product Product, payment Payment)
 func CreateNewNote (c *fiber.Ctx) error {
 	type ParamsCreate struct {
 		ProductRefer int `json:"product_id" validate:"required"`
-		Product 	*Product `json:"product"`
 		PaymentRefer int 	`json:"payment_id"`
-		Payment 	*Payment	`gorm:"foreignKey:PaymentRefer"`
+		OrderRefer 	 int 	`json:"order_id"`
 		Note 		string 	`json:"note"`
 		Change 		int32 	`json:"change"`
 		OldStock	int32 	`json:"old_stock"`
@@ -78,18 +81,23 @@ func CreateNewNote (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	if err := database.Database.DB.Where("status = ?").First(&payment).Error; err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
-	}
-
 	var orders models.Order
-	if err := FindIdOrder(int(payment.OrderID), &orders); err != nil {
+	if err := FindIdOrder(params.OrderRefer, &orders); err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	var products models.Product
-	if err := findID(int(params.ProductRefer), &products); err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan id product!")
+	if err := findID(params.ProductRefer, &products); err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan product id!")
+	}
+
+	var users models.User
+	if err := FindIdUser(orders.UserRefer, &users); err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	if err := database.Database.DB.Where("status = ?").First(&payment).Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	var stock models.StockLog
@@ -133,7 +141,11 @@ func CreateNewNote (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	responseStockLog := DataBaseIntoStock(stock, Product(products), DatabaseIntoPayment(payment))
+	responseUser := CreateUserResponse(*orders.User)
+	responseProduct := CreateProductResponse(*orders.Product)
+	responseOrder := ResponseToOrder(orders, responseUser, responseProduct)
+	responsePayment := DatabaseIntoPayment(payment, responseOrder)
+	responseStockLog := DataBaseIntoStock(stock, responseProduct, responsePayment, responseOrder)
 	return utils.JsonWithSuccess(c, responseStockLog, fiber.StatusOK, "Berhasil membuat catatan order!")
 }
 

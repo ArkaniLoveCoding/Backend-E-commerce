@@ -10,6 +10,8 @@ type StockLog struct {
 	Product 	*Product `gorm:"foreignKey:ProductRefer"`
 	PaymentRefer int 	`json:"payment_id"`
 	Payment 	*Payment	`gorm:"foreignKey:PaymentRefer"`
+	OrderRefer 	int 	`json:"order_id"`
+	Order 		*Order	`gorm:"foreignKey:OrderRefer"`
 	CreatedAt 	time.Time
 	Note 		string 	`json:"note"`
 	Change 		int32 	`json:"change"`
