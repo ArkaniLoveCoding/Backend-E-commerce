@@ -133,7 +133,7 @@ func CreateNewNote (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	responseStockLog := DataBaseIntoStock(stock, Product(products), Payment(payment))
+	responseStockLog := DataBaseIntoStock(stock, Product(products), DatabaseIntoPayment(payment))
 	return utils.JsonWithSuccess(c, responseStockLog, fiber.StatusOK, "Berhasil membuat catatan order!")
 }
 

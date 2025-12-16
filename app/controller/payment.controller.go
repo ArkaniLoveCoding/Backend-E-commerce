@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -133,35 +132,37 @@ func WebHookForPayments (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal memvalidasi body!")
 	}
 
-	order_id := payload["order_id"].(string)
-	final_order_id := string(order_id)
+	order_id, ok:= payload["order_id"].(int)
+	if !ok {
+		order_id = 0
+	}
 
-	transaction_status := payload["transaction_status"].(string)
-	final_transaction_status := string(transaction_status)
+	transaction_status, ok := payload["transaction_status"].(string)
+	if !ok {
+		transaction_status = ""
+	}
 
-	payment_type := payload["payment_type"].(string)
-	final_payment_type := string(payment_type)
+	payment_type, ok := payload["payment_type"].(string)
+	if !ok {
+		payment_type = ""
+	}
 
-	transaction_time := payload["transaction_time"].(string)
-	final_transaction_time := string(transaction_time)
-
-	
-	convertInt, err := strconv.Atoi(final_order_id)
-	if err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	transaction_time, ok := payload["transaction_time"].(string)
+	if !ok {
+		transaction_time = ""
 	}
 
 	var orders models.Order
-	if err := database.Database.DB.Find(&orders, "id = ?", uint(convertInt)).Error; err != nil {
+	if err := database.Database.DB.Find(&orders, "id = ?", order_id).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	var payments models.Payment
-	if err := database.Database.DB.Where("order_id = ?").First(&payments, uint(convertInt)).Error; err != nil {
+	if err := database.Database.DB.Find(&payments, "order_id = ?", order_id).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	paid, err := time.Parse("2006-01-02 15:04:05", final_transaction_time)
+	paid, err := time.Parse("2006-01-02 15:04:05", transaction_time)
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -169,14 +170,14 @@ func WebHookForPayments (c *fiber.Ctx) error {
 
 	dbPaymentStatus := "pending"
 
-	switch final_transaction_status {
+	switch transaction_status {
 		case "pending":
 			dbPaymentStatus = "pending"
 		case "settlement":
 			dbPaymentStatus = "success to paid!"
 			if err := 
 			database.Database.DB.Model(&orders).
-			Where("id = ?", uint(convertInt)).
+			Where("id = ?", order_id).
 			Updates(map[string]interface{}{
 				"status": "success!",
 			}).Error; err != nil {
@@ -186,7 +187,7 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			dbPaymentStatus = "failed! because the transactions has been expired.."
 			if err := 
 			database.Database.DB.Model(&orders).
-			Where("id = ?", uint(convertInt)).
+			Where("id = ?", order_id).
 			Updates(map[string]interface{}{
 				"status": "expired!",
 			}).Error; err != nil {
@@ -196,7 +197,7 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			dbPaymentStatus = "success to paid!"
 			if err := 
 			database.Database.DB.Model(&orders).
-			Where("id = ?", uint(convertInt)).
+			Where("id = ?", order_id).
 			Updates(map[string]interface{}{
 				"status": "success!",
 			}).Error; err != nil {
@@ -206,7 +207,7 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			dbPaymentStatus = "failed!"
 			if err := 
 			database.Database.DB.Model(&orders).
-			Where("id = ?", uint(convertInt)).
+			Where("id = ?", order_id).
 			Updates(map[string]interface{}{
 				"status": "failed!",
 			}).Error; err != nil {
@@ -216,7 +217,7 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			dbPaymentStatus = "failed!"
 			if err := 
 			database.Database.DB.Model(&orders).
-			Where("id = ?", uint(convertInt)).
+			Where("id = ?", order_id).
 			Updates(map[string]interface{}{
 				"status": "failed!",
 			}).Error; err != nil {
@@ -227,7 +228,7 @@ func WebHookForPayments (c *fiber.Ctx) error {
 	if err := database.Database.DB.Model(&payments).Updates(map[string]interface{}{
 		"status": dbPaymentStatus,
 		"paid": paid,
-		"payment_method": final_payment_type,
+		"payment_method": payment_type,
 	}).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
