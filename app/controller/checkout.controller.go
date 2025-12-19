@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
-	"gorm.io/gorm"
 
 	"github.com/ArkaniLoveCoding/fiber-project/database"
 	"github.com/ArkaniLoveCoding/fiber-project/models"
@@ -193,11 +192,6 @@ func DeleteCheckout (c *fiber.Ctx) error {
 	if err := tx.Delete(&checkout).Error; err != nil {
 		tx.Rollback()
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data checkout!")
-	}
-
-	var product models.Product
-	if err := tx.Model(&product).Where("id = ?", order.ProductRefer).Update("stock", gorm.Expr("stock + ?", order.Quantity)).Error; err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 	
 	responseUser := CreateUserResponse(*order.User)

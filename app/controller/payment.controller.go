@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -17,16 +18,16 @@ import (
 
 type Payment struct {
 	ID            uint	`json:"id" gorm:"primaryKey"`
-	CheckoutID    uint	`json:"checkout_id"`
-	OrderID       uint	`json:"order_id"`
+	CheckoutID    int	`json:"checkout_id"`
+	OrderID       int	`json:"order_id"`
 	Order 		  *Order `json:"order"`
 	Provider      string	`json:"provider"`
 	PaymentMethod string	`json:"payment_method"`
 	Amount        int32		`json:"amount"`	
 	Status        string	`json:"status"`
-	ProviderRef   string	`json:"provider_ref"`
+	ProviderRef   time.Time
 	PaymentURL    string	`json:"payment_url"`
-	PaidAt        *time.Time
+	PaidAt        time.Time
 	CreatedAt     time.Time
 }
 
@@ -42,7 +43,7 @@ func DatabaseIntoPayment (payment models.Payment, order Order) Payment {
 		Status: payment.Status,
 		ProviderRef: payment.ProviderRef,
 		PaymentURL: payment.PaymentURL,
-		PaidAt: &time.Time{},
+		PaidAt:	payment.PaidAt,
 		CreatedAt: payment.CreatedAt,
 	}
 }
@@ -50,8 +51,8 @@ func DatabaseIntoPayment (payment models.Payment, order Order) Payment {
 func CreateNewPayment (c *fiber.Ctx) error {
 	type ParamsCreate struct {
 		ID            uint	`json:"id" gorm:"primaryKey"`
-		CheckoutID    uint	`json:"checkout_id" validate:"required"`
-		OrderID       uint	`json:"order_id" validate:"required"`
+		CheckoutID    int	`json:"checkout_id" validate:"required"`
+		OrderID       int	`json:"order_id" validate:"required"`
 		Order 		  *Order `json:"order"`
 		Provider      string	`json:"provider"`
 		PaymentMethod string	`json:"payment_method" validate:"required"`
@@ -59,8 +60,6 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		Status        string	`json:"status"`
 		ProviderRef   string	`json:"provider_ref"`
 		PaymentURL    string	`json:"payment_url"`
-		PaidAt        *time.Time
-		CreatedAt     time.Time
 	}
 	var body ParamsCreate
 	if err := c.BodyParser(&body); err != nil {
@@ -81,41 +80,37 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		})
 	}
 
-	var payments models.Payment
-	var checkouts models.Checkout
-	if err := FindIdCheckout(int(body.CheckoutID), &checkouts); err != nil {
-		return  utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
-	}
-
 	var orders models.Order
-	if err := FindIdOrder(int(body.OrderID), &orders); err != nil {
+	if err := database.Database.DB.
+	Preload("Product").Preload("User").First(&orders, int(body.OrderID)).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Order tidak ditemukan!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	var products models.Product
-	if err := findID(orders.ProductRefer, &products); err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan id product!")
+	var checkouts models.Checkout
+	if err := database.Database.DB.Find(&checkouts, "id = ?" ,int(body.CheckoutID)).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ada!")
+		}
+		return  utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	var users models.User
-	if err := FindIdUser(orders.UserRefer, &users); err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan id user!")
-	}
-
-	times := fmt.Sprintf("Dibayar pada tanggal - %d", time.Now().Unix())
 	MidtransResp, err := utils.CreateSnapMidtrans(int(checkouts.Nominal), int(body.OrderID))
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
+
 	result := models.Payment{
-		ID: body.ID,
-		CheckoutID: body.CheckoutID,
-		OrderID: body.OrderID,
+		CheckoutID: int(body.CheckoutID),
+		OrderID: int(body.OrderID),
+		Order: &orders,
 		Provider: "midtrans",
 		PaymentMethod: body.PaymentMethod,
 		Amount: int32(checkouts.Nominal),
 		Status: "pending",
-		ProviderRef: times,
+		ProviderRef: time.Now(),
 		PaymentURL: MidtransResp.RedirectURL,
 	}
 
@@ -123,6 +118,7 @@ func CreateNewPayment (c *fiber.Ctx) error {
 	defer func(){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
@@ -131,20 +127,26 @@ func CreateNewPayment (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	if err := tx.Model(&products).Where("id = ?", orders.ProductRefer).Update("stock", gorm.Expr("stock - ?", - orders.Quantity)).Error; err != nil {
+	if err := tx.Model(&models.Product{}).
+	Where("id = ?", orders.ProductRefer).
+	Update("stock", gorm.Expr("stock - ?", orders.Quantity)).Error; err != nil {
 		tx.Rollback()
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
-	
+
 	responseUser := CreateUserResponse(*orders.User)
 	responeProduct := CreateProductResponse(*orders.Product)
 	responseOrder := ResponseToOrder(orders, responseUser, responeProduct)
-	responsePayment := DatabaseIntoPayment(payments, responseOrder)
+	responsePayment := DatabaseIntoPayment(result, responseOrder)
 
-	return utils.JsonWithSuccess(c, responsePayment, fiber.StatusOK, "Berhasil membuat payment!")
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return utils.JsonWithSuccess(c, responsePayment, fiber.StatusOK, "Berhasil membuat payment baru!")
 }
-func GetOrderId (id int, order *models.Payment) error {
-	if err := database.Database.DB.Find(&order, "id = ?", id).Error; err != nil {
+func GetOrderId (id int, payments *models.Payment) error {
+	if err := database.Database.DB.Where("order_id = ?").First(&payments).Error; err != nil {
 		return nil
 	}
 	if id == 0 {
@@ -159,9 +161,23 @@ func WebHookForPayments (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal memvalidasi body!")
 	}
 
-	order_id, ok:= payload["order_id"].(int)
+	order_id, ok:= payload["order_id"].(string)
 	if !ok {
-		order_id = 0
+		order_id = ""
+	}
+
+	checkout_id, ok := payload["checkout_id"].(string)
+	if !ok {
+		checkout_id = ""
+	}
+	convertCheckoutId, err := strconv.Atoi(checkout_id)
+	if err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	convert, err := strconv.Atoi(order_id)
+	if err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	transaction_status, ok := payload["transaction_status"].(string)
@@ -180,16 +196,23 @@ func WebHookForPayments (c *fiber.Ctx) error {
 	}
 
 	var orders models.Order
-	if err := FindIdOrder(order_id, &orders); err != nil {
+	if err := FindIdOrder(convert, &orders); err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	var payments models.Payment
-	if err := GetOrderId(order_id, &payments); err != nil {
+	if err := GetOrderId(convert, &payments); err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	paid, err := time.Parse("2006-01-02 15:04:05", transaction_time)
+	if err := database.Database.DB.Find(&payments, "checkout_id = ?", convertCheckoutId).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ditemukan!")
+		}
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	paid, err := time.Parse(time.RFC3339, transaction_time)
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -208,7 +231,20 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			Updates(map[string]interface{}{
 				"status": "success!",
 			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Order id tidak ditemukan!")
+				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
+			}
+			if err := database.Database.DB.Model(&models.Checkout{}).
+			Where("id = ?", checkout_id).
+			Updates(map[string]interface{}{
+				"status": "success!",
+			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ditemukan!")
+				}
+				return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 			}
 		case "expire":
 			dbPaymentStatus = "failed! because the transactions has been expired.."
@@ -218,7 +254,20 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			Updates(map[string]interface{}{
 				"status": "expired!",
 			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Order id tidak ditemukan!")
+				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
+			}
+			if err := database.Database.DB.Model(&models.Checkout{}).
+			Where("id = ?").
+			Updates(map[string]interface{}{
+				"status": "expired!",
+			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ditemukan!")
+				}
+				return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 			}
 		case "capture":
 			dbPaymentStatus = "success to paid!"
@@ -228,6 +277,9 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			Updates(map[string]interface{}{
 				"status": "success!",
 			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Order id tidak ditemukan!")
+				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
 			}
 		case "cancel":
@@ -238,6 +290,9 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			Updates(map[string]interface{}{
 				"status": "failed!",
 			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Order id tidak ditemukan!")
+				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
 			}
 		case "deny":
@@ -248,13 +303,18 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			Updates(map[string]interface{}{
 				"status": "failed!",
 			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Order id tidak ditemukan!")
+				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
 			}
 	}
 
-	if err := database.Database.DB.Model(&payments).Updates(map[string]interface{}{
+	if err := database.Database.DB.Model(&payments).
+	Where("order_id = ?", convert).
+	Updates(map[string]interface{}{
 		"status": dbPaymentStatus,
-		"paid": paid,
+		"paid_at": paid,
 		"payment_method": payment_type,
 	}).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
