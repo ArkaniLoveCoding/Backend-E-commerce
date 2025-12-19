@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	"github.com/ArkaniLoveCoding/fiber-project/database"
 	"github.com/ArkaniLoveCoding/fiber-project/models"
@@ -78,27 +80,37 @@ func CreateNewNote (c *fiber.Ctx) error {
 
 	var payment models.Payment
 	if err := database.Database.DB.Find(&payment, "id = ?",params.PaymentRefer).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Tidak menemukan Payment id!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	var orders models.Order
-	if err := FindIdOrder(params.OrderRefer, &orders); err != nil {
+	if err := database.Database.DB.
+	Preload("Product").
+	Preload("User").
+	First(&orders, params.OrderRefer).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Tidak menemukan order id!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	var products models.Product
-	if err := findID(params.ProductRefer, &products); err != nil {
-		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan product id!")
-	}
-
-	var users models.User
-	if err := FindIdUser(orders.UserRefer, &users); err != nil {
+	if err := database.Database.DB.
+	Find(&products, "id = ?", params.ProductRefer).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Tidak menemukan id product!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	if err := database.Database.DB.Where("status = ?").First(&payment).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
+
+	// main logic
 
 	var stock models.StockLog
 	oldStock := products.Stock
@@ -128,16 +140,23 @@ func CreateNewNote (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Create(&result).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidValue) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Value tidak match!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	if err := tx.Save(&products).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidValue) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Value tidak match!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -146,6 +165,8 @@ func CreateNewNote (c *fiber.Ctx) error {
 	responseOrder := ResponseToOrder(orders, responseUser, responseProduct)
 	responsePayment := DatabaseIntoPayment(payment, responseOrder)
 	responseStockLog := DataBaseIntoStock(stock, responseProduct, responsePayment, responseOrder)
+	tx.Commit()
+
 	return utils.JsonWithSuccess(c, responseStockLog, fiber.StatusOK, "Berhasil membuat catatan order!")
 }
 

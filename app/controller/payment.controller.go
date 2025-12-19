@@ -282,6 +282,16 @@ func WebHookForPayments (c *fiber.Ctx) error {
 				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
 			}
+			if err := database.Database.DB.Model(&models.Checkout{}).
+			Where("id = ?").
+			Updates(map[string]interface{}{
+				"status": "capture",
+			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ditemukan!")
+				}
+				return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+			}
 		case "cancel":
 			dbPaymentStatus = "failed!"
 			if err := 
@@ -295,6 +305,16 @@ func WebHookForPayments (c *fiber.Ctx) error {
 				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
 			}
+			if err := database.Database.DB.Model(&models.Checkout{}).
+			Where("id = ?").
+			Updates(map[string]interface{}{
+				"status": "canceled!",
+			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ditemukan!")
+				}
+				return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+			} 
 		case "deny":
 			dbPaymentStatus = "failed!"
 			if err := 
@@ -307,6 +327,16 @@ func WebHookForPayments (c *fiber.Ctx) error {
 					return utils.JsonWithError(c, fiber.StatusBadRequest, "Order id tidak ditemukan!")
 				}
 				return utils.JsonWithError(c, fiber.StatusBadGateway, err.Error())
+			}
+			if err := database.Database.DB.Model(&models.Checkout{}).
+			Where("id = ?").
+			Updates(map[string]interface{}{
+				"status": "failed!",
+			}).Error; err != nil {
+				if errors.Is(err, gorm.ErrInvalidField) {
+					return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ditemukan!")
+				}
+				return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 			}
 	}
 
