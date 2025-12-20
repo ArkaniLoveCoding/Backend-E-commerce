@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	"github.com/ArkaniLoveCoding/fiber-project/database"
 	"github.com/ArkaniLoveCoding/fiber-project/models"
@@ -116,15 +117,22 @@ func CreatenNewProduct (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Create(&paramsProduct).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal membuat product!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 	responseProduct := CreateProductResponse(paramsProduct)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseProduct, fiber.StatusOK, "Berhasil membuat product!")
 }
@@ -154,7 +162,11 @@ func GetAllProducts (c *fiber.Ctx) error {
 		dir = "asc"
 	}
 
-	if err := database.Database.DB.Scopes(database.Pagination(c)).Order(fmt.Sprintf("%s %s", sort, dir)).Find(&products).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id, name, stock, price, category, status, expired, serial_number, image").
+	Scopes(database.Pagination(c)).
+	Order(fmt.Sprintf("%s %s", sort, dir)).
+	Find(&products).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 	for _, products := range products {
@@ -164,7 +176,9 @@ func GetAllProducts (c *fiber.Ctx) error {
 	return utils.JsonWithSuccess(c, products, fiber.StatusOK, "Berhasil mendapatkan semua data produk!")
 }
 func findID (id int, product *models.Product) error {
-	if err := database.Database.DB.Find(&product, "id = ?", id).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id").
+	Find(&product, "id = ?", id).Error; err != nil {
 		return errors.New(err.Error())
 	}
 	if product.ID == 0 {
@@ -252,16 +266,23 @@ func UpdateProduct (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Save(&products).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengupdate data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 	
 	responseProduct := CreateProductResponse(products)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseProduct, fiber.StatusOK, "Berhasil mengupdate data product!")
 }
@@ -301,15 +322,22 @@ func PatchProduct (c *fiber.Ctx) error {
 	defer func (){
 	if r := recover(); r != nil {
 		tx.Rollback()
-		}
+		panic(r)
+	}
 	}()
 
-	if err := tx.Model(&product).Updates(inputsResult).Error; err != nil {
+	if err := tx.
+	Select("name, price, stock, serial_number, expired, category, image, status").
+	Model(&product).
+	Updates(inputsResult).Error; err != nil {
 		tx.Rollback()
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 	responseProduct := CreateProductResponse(product)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseProduct, fiber.StatusOK, "Berhasil mengupdate data!")
 }
@@ -328,15 +356,22 @@ func DeleteProduct (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Delete(products).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data product!")
 	}
 	responseProduct := CreateProductResponse(products)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseProduct, fiber.StatusOK, "Berhasil menghapus data product!")
 }
@@ -348,8 +383,10 @@ func SeacrhProductFromStatus (c *fiber.Ctx) error {
 	}
 	var products []models.Product
 	
-	if err := database.Database.DB.Where("status ILIKE ?", "%"+keyword+"%").
-        Find(&products).Error; err != nil {
+	if err := database.Database.DB.
+	Select("status").
+	Where("status ILIKE ?", "%"+keyword+"%").
+    Find(&products).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mendapatkan data!")
 	}
 	
@@ -367,8 +404,10 @@ func SearchProductFromName (c *fiber.Ctx) error {
 	}
 
 	var products []models.Product
-	if err := database.Database.DB.Where("name ILIKE ?", "%"+paramsQuery+"%").
-        Find(&products).Error; err != nil {
+	if err := database.Database.DB.
+	Select("name").
+	Where("name ILIKE ?", "%"+paramsQuery+"%").
+    Find(&products).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mendapatkan data!")
 	}
 
@@ -396,17 +435,27 @@ func BatchAllDeleteProduct (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	var product models.Product
-	if err := tx.Where("id ? IN", idUint).Delete(&product).Error; err != nil {
+	if err := tx.
+	Select("id").
+	Where("id ? IN", idUint).
+	Delete(&product).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseProduct := CreateProductResponse(product)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseProduct, fiber.StatusOK, "Berhasil menghapus data id !")
 }
@@ -480,15 +529,23 @@ func BatchAllUpdateProduct (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
-	if err := tx.Model(&products).Where("id ? IN", idUint).Updates(products).Error; err != nil {
+	if err := tx.
+	Select("name, price, stock, serial_number, expired, category, image, status").
+	Model(&products).
+	Where("id ? IN", idUint).
+	Updates(products).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseProduct := CreateProductResponse(products)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseProduct, fiber.StatusOK, "Berhasil mengupdate banyak data sekaligus!")
 }

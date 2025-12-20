@@ -8,6 +8,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
+	"gorm.io/gorm"
 
 	"github.com/ArkaniLoveCoding/fiber-project/database"
 	"github.com/ArkaniLoveCoding/fiber-project/models"
@@ -89,11 +90,15 @@ func CreateUserNew (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Create(&user).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal membuat user baru!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -104,7 +109,9 @@ func CreateUserNew (c *fiber.Ctx) error {
 	}
 	fmt.Println("Token: ", jwt)
 	responseUser := CreateUserResponse(user)
-	tx.Commit()
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseUser, fiber.StatusCreated, "Berhasil membuat user baru!")
 }
@@ -113,7 +120,14 @@ func GetAllUser (c *fiber.Ctx) error {
 	responseUsers := []User{}
 
 	// find all users
-	database.Database.DB.Find(&users)
+	if err := database.Database.DB.
+	Select("id, name, password, email, role").
+	Find(&users).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan data user!")
+		}
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 	for _, Users := range users {
 		responseUser := CreateUserResponse(Users)
 		responseUsers = append(responseUsers, responseUser)
@@ -121,7 +135,14 @@ func GetAllUser (c *fiber.Ctx) error {
 	return utils.JsonWithSuccess(c, responseUsers, fiber.StatusOK, "Berhasil mengambil semua data user!")
 }
 func FindIdUser (id int, user *models.User) error {
-	database.Database.DB.Find(&user, "id = ?", id)
+	if err := database.Database.DB.
+	Select("id").
+	Find(&user, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return errors.New("Gagal menemukan id!")
+		}
+		return nil
+	}
 	if user.ID == 0 {
 		return errors.New("the user id does not exist")
 	}
@@ -144,6 +165,7 @@ func UpdateUser (c *fiber.Ctx) error {
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal memvalidasi id!")
 	}
+
 	var user models.User
 	if err := FindIdUser(id, &user); err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal memvalidasi id!")
@@ -177,16 +199,23 @@ func UpdateUser (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Save(&params).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengupdate data user!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseUsersUpdate := CreateUserResponse(user)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseUsersUpdate, fiber.StatusOK, "Berhasil mengubah data user !")
 }
@@ -204,16 +233,23 @@ func DeleteUser (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Delete(&user).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseUsers := CreateUserResponse(user)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 	
 	return utils.JsonWithSuccess(c, responseUsers, fiber.StatusOK, "Berhasil menghapus data user !")
 }
@@ -244,7 +280,13 @@ func Login (c *fiber.Ctx) error {
 	}
 	// pengkondisian ketika memfilter sesuatu
 	var user models.User
-	if err := database.Database.DB.Where("email = ?", params.Email).First(&user).Error; err != nil {
+	if err := database.Database.DB.
+	Select("email").
+	Where("email = ?", params.Email).
+	First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan email!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -294,16 +336,26 @@ func PatchUser (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
-	if err := tx.Model(&user).Updates(inputPatchUser).Error; err != nil {
+	if err := tx.
+	Select("name, password, email").
+	Model(&user).
+	Updates(inputPatchUser).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengubah data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengupdate data!")
 	}
 
 	responseUser := CreateUserResponse(user)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseUser, fiber.StatusOK, "Berhasil mengubah salah satu data!")
 }
@@ -331,7 +383,21 @@ func UpdateRoleUser (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	if err := database.Database.DB.Model(&user).Update("role", "admin").Error; err != nil {
+	tx := database.Database.DB.Begin()
+	defer func(){
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+	}()
+
+	if err := database.Database.DB.
+	Select("role").
+	Model(&user).
+	Update("role", "admin").Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan role!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 

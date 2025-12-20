@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	"github.com/ArkaniLoveCoding/fiber-project/database"
 	"github.com/ArkaniLoveCoding/fiber-project/models"
@@ -105,19 +106,26 @@ func CreateOrder (c *fiber.Ctx) error {
 	defer func () {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	// kita memakai ini agar bisa mengambil data hasil dari query yang kita masukkan
 	if err := tx.Create(&result).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal membuat order baru!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseProduct := CreateProductResponse(product)
 	responseUser := CreateUserResponse(user)
 	responseCreate := ResponseToOrder(result, responseUser, responseProduct)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseCreate, fiber.StatusOK, "Berhasil menambahkan order!")
 }
@@ -146,7 +154,11 @@ func GetAllOrder (c *fiber.Ctx) error {
 		dir = "asc"
 	}
 
-	if err := database.Database.DB.Scopes(database.Pagination(c)).Find(&orders).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id, quantity, status, total_order, product_id, user_id").
+	Scopes(database.
+	Pagination(c)).
+	Find(&orders).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 	if len(orders) == 0 {
@@ -164,7 +176,9 @@ func GetAllOrder (c *fiber.Ctx) error {
 	return utils.JsonWithSuccess(c, Order, fiber.StatusOK, "Berhasil melihat semua data order!")
 }
 func FindIdOrder (id int, order *models.Order) error {
-	if err := database.Database.DB.Find(&order, "id = ?", id).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id").
+	Find(&order, "id = ?", id).Error; err != nil {
 		return errors.New(err.Error())
 	}
 	if order.ID == 0 {
@@ -224,19 +238,26 @@ func DeleteOrder (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	// kita memakai ini agar bisa mengambil data hasil dari query yang kita masukkan
 	if err := tx.Delete(&order).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseProduct := CreateProductResponse(product)
 	responseUser := CreateUserResponse(user)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseOrder, fiber.StatusOK, "Berhasil menghapus data order!")
 }
@@ -305,18 +326,25 @@ func UpdateOrder (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Save(&order).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengubah data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseProduct := CreateProductResponse(product)
 	responseUser := CreateUserResponse(user)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseOrder, fiber.StatusOK, "Berhasil mengupdate data order!")
 }
@@ -337,7 +365,9 @@ func PatchQuantityOrder (c *fiber.Ctx) error {
 	}
 
 	var product models.Product
-	if err := database.Database.DB.First(&product, order.ProductRefer).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id").
+	First(&product, order.ProductRefer).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 	if quantity, ok := inputsUser["quantity"]; ok {
@@ -357,18 +387,28 @@ func PatchQuantityOrder (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
-	if err := tx.Model(&order).Updates(inputsUser).Error; err != nil {
+	if err := tx.
+	Select("id, quantity, total_order, status, product_id, user_id").
+	Model(&order).
+	Updates(inputsUser).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengubah data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseUser := CreateUserResponse(user)
 	responseProduct := CreateProductResponse(product)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseOrder, fiber.StatusOK, "Berhasil menambahkan data!")
 }
@@ -377,7 +417,8 @@ func SearchProductAndUser (c *fiber.Ctx) error {
 
 	var orders []models.Order
 
-	if err := database.Database.DB.Where("CAST(product_refer AS TEXT) LIKE ?", "%"+keyword+"%").
+	if err := database.Database.DB.
+	Where("CAST(product_refer AS TEXT) LIKE ?", "%"+keyword+"%").
 	Preload("User").
 	Preload("Product").
 	Find(&orders).Error; err != nil {
@@ -423,19 +464,28 @@ func BatchAllDeleteOrder (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.
+	Select("id").
 	Preload("Product").
 	Preload("User").Where("id ? IN", paramsId).Delete(&order).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseUser := CreateUserResponse(user)
 	responseProduct := CreateProductResponse(product)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseOrder, fiber.StatusOK, "Berhasil menghapus data sekaligus!")
 }
@@ -489,15 +539,24 @@ func BatchAllUpdateOrder (c *fiber.Ctx) error {
 	defer func (){ 
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
-	if err := tx.Model(&order).Where("id ? IN", idUint).Updates(updateOrder).Error; err != nil {
+	if err := tx.
+	Select("id").
+	Model(&order).
+	Where("id ? IN", idUint).
+	Updates(updateOrder).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	responseUser := CreateUserResponse(user)
 	responseProduct := CreateProductResponse(product)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseOrder, fiber.StatusOK, "Berhasil mengubah semua data yang diinginkan!")
 }

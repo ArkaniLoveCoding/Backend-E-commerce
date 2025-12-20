@@ -14,8 +14,8 @@ type StockLog struct {
 	Order 		*Order	`gorm:"foreignKey:OrderRefer"`
 	CreatedAt 	time.Time
 	Note 		string 	`json:"note"`
-	Change 		int32 	`json:"change"`
-	OldStock 	int32   `json:"old_stock"`
-	NewStock 	int32 	`json:"new_stock"`
+	Change 		int 	`json:"change"`
+	OldStock 	int   `json:"old_stock"`
+	NewStock 	int 	`json:"new_stock"`
 	Type 		string 	`json:"type"`	
 }

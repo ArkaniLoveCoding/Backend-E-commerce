@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	"github.com/ArkaniLoveCoding/fiber-project/database"
 	"github.com/ArkaniLoveCoding/fiber-project/models"
@@ -48,7 +50,10 @@ func CreateCheckout (c *fiber.Ctx) error {
 	}
 	
 	var order models.Order
-	if err := database.Database.DB.Preload("Product").Preload("User").Find(&order, "id = ?", checkoutParams.OrderRefer).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id").
+	Preload("Product").
+	Preload("User").Find(&order, "id = ?", checkoutParams.OrderRefer).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -77,6 +82,7 @@ func CreateCheckout (c *fiber.Ctx) error {
 	defer func () {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
@@ -87,6 +93,9 @@ func CreateCheckout (c *fiber.Ctx) error {
 
 	if err := tx.Create(&paramsFinal).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal membuat suatu data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -95,7 +104,10 @@ func CreateCheckout (c *fiber.Ctx) error {
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
 
 	responseCheckout := ResponeToCheckout(paramsFinal, responseOrder)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseCheckout, fiber.StatusOK, "Berhasil membuat data checkout!")
 }
@@ -125,7 +137,13 @@ func GetAllCheckout (c *fiber.Ctx) error {
 		dir = "asc"
 	}
 
-	if err := database.Database.DB.Scopes(database.Pagination(c)).Find(&checkout); err != nil {
+	if err := database.Database.DB.
+	Select("id, order_id, nominal, status").
+	Scopes(database.Pagination(c)).
+	Find(&checkout).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidData) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mendapatkan data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mendapatkan semua data checkout!")
 	}
 
@@ -139,7 +157,9 @@ func GetAllCheckout (c *fiber.Ctx) error {
 	return utils.JsonWithSuccess(c, Checkout, fiber.StatusOK, "Berhasil mengambil semua data checkout!")
 }
 func FindIdCheckout (id int, checkout *models.Checkout) error {
-	if err := database.Database.DB.Find(&checkout, "id = ?", id); err != nil {
+	if err := database.Database.DB.
+	Select("id").
+	Find(&checkout, "id = ?", id); err != nil {
 		return nil
 	}
 	if checkout.ID == 0 {
@@ -186,11 +206,15 @@ func DeleteCheckout (c *fiber.Ctx) error {
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Delete(&checkout).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidData) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data checkout!")
 	}
 	
@@ -198,7 +222,10 @@ func DeleteCheckout (c *fiber.Ctx) error {
 	responseProduct := CreateProductResponse(*order.Product)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
 	responseCheckout := ResponeToCheckout(checkout, responseOrder)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseCheckout, fiber.StatusOK, "Berhasil menghapus data yang diinginkan!")
 }
@@ -256,11 +283,15 @@ func UpdateCheckout (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 	if err := tx.Save(&checkout).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengubah data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengubah data !")
 	}
 
@@ -268,7 +299,10 @@ func UpdateCheckout (c *fiber.Ctx) error {
 	responseProduct := CreateProductResponse(*order.Product)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
 	responseCheckout := ResponeToCheckout(checkout, responseOrder)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseCheckout, fiber.StatusOK, "Berhasil mengubah data checkout!")
 }
@@ -284,7 +318,10 @@ func PatchNominal (c *fiber.Ctx) error {
 	}
 
 	var order models.Order
-	if err := database.Database.DB.Preload("Product").Preload("User").Find(&order, "id = ?", checkout.OrderRefer).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id").
+	Preload("Product").
+	Preload("User").Find(&order, "id = ?", checkout.OrderRefer).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal melihat order!")
 	}
 
@@ -297,12 +334,19 @@ func PatchNominal (c *fiber.Ctx) error {
 	defer func (){
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
 
-	if err := tx.Model(&checkout).Updates(inputsNominal).Error; err != nil {
+	if err := tx.
+	Select("nominal").
+	Model(&checkout).
+	Updates(inputsNominal).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengubah data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -310,7 +354,10 @@ func PatchNominal (c *fiber.Ctx) error {
 	responseProduct := CreateProductResponse(*order.Product)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
 	responseCheckout := ResponeToCheckout(checkout, responseOrder)
-	tx.Commit()
+	
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseCheckout, fiber.StatusOK, "Berhasil mengubah data checkout!")
 }
@@ -327,8 +374,23 @@ func BatchAllDeleteCheckout (c *fiber.Ctx) error {
 		paramsId = append(paramsId, uint(idInt))
 	}
 
+	tx := database.Database.DB.Begin()
+	defer func (){
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+	}()
+
 	var checkout models.Checkout
-	if err := database.Database.DB.Where("id ? IN", paramsId).Delete(&checkout).Error; err != nil {
+	if err := tx.
+	Select("id").
+	Where("id ? IN", paramsId).
+	Delete(&checkout).Error; err != nil {
+		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menghapus data!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mengolah data!")
 	}
 
@@ -337,6 +399,10 @@ func BatchAllDeleteCheckout (c *fiber.Ctx) error {
 	responseProduct := CreateProductResponse(*order.Product)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
 	responseCheckout := ResponeToCheckout(checkout, responseOrder)
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
 
 	return utils.JsonWithSuccess(c, responseCheckout, fiber.StatusOK, "Berhasil menghapus dan mengupdate data sekaligus!")
 }
