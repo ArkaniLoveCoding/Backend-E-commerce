@@ -177,8 +177,9 @@ func GetAllOrder (c *fiber.Ctx) error {
 }
 func FindIdOrder (id int, order *models.Order) error {
 	if err := database.Database.DB.
-	Select("id").
-	Find(&order, "id = ?", id).Error; err != nil {
+	Select("id", "quantity", "status", "total_order", "user_refer", "product_refer").
+	Where("id = ?", id).
+	Find(&order).Error; err != nil {
 		return errors.New(err.Error())
 	}
 	if order.ID == 0 {
@@ -211,6 +212,7 @@ func GetOneOrder (c *fiber.Ctx) error {
 	responseProduct := CreateProductResponse(product)
 	responseUser := CreateUserResponse(user)
 	responseOrder := ResponseToOrder(order, responseUser, responseProduct)
+
 	return utils.JsonWithSuccess(c, responseOrder, fiber.StatusOK, "Berhasil mengambil data salah satu order!")
 }
 func DeleteOrder (c *fiber.Ctx) error {
@@ -418,6 +420,7 @@ func SearchProductAndUser (c *fiber.Ctx) error {
 	var orders []models.Order
 
 	if err := database.Database.DB.
+	Select("product_refer", "user_refer", "total_order", "quantity").
 	Where("CAST(product_refer AS TEXT) LIKE ?", "%"+keyword+"%").
 	Preload("User").
 	Preload("Product").
@@ -469,7 +472,7 @@ func BatchAllDeleteOrder (c *fiber.Ctx) error {
 	}()
 
 	if err := tx.
-	Select("id").
+	Select("id", "total_order", "quantity", "user_refer", "product_refer", "status").
 	Preload("Product").
 	Preload("User").Where("id ? IN", paramsId).Delete(&order).Error; err != nil {
 		tx.Rollback()
@@ -543,7 +546,7 @@ func BatchAllUpdateOrder (c *fiber.Ctx) error {
 		}
 	}()
 	if err := tx.
-	Select("id").
+	Select("id", "total_order", "quantity", "user_refer", "product_refer", "status").
 	Model(&order).
 	Where("id ? IN", idUint).
 	Updates(updateOrder).Error; err != nil {

@@ -12,7 +12,8 @@ func HandleUserRoutes(app *fiber.App) error {
 
 	// user endpoints
 	apiRoutes.Post("/user/registration", controller.CreateUserNew)
-	apiRoutes.Get("/user", middleware.AuthMiddleware, controller.GetAllUser)
+	apiRoutes.Get("/user", middleware.MiddlewareRoleOnly, controller.GetAllUser)
+	apiRoutes.Get("/user/:id", middleware.MiddlewareRoleOnly, controller.GetOneUser)
 	apiRoutes.Put("/user/role", middleware.MiddlewareAuthChangeRole, controller.UpdateRoleUser)
 	apiRoutes.Put("/user/:id", middleware.AuthMiddleware, controller.UpdateUser)
 	apiRoutes.Delete("/user/:id", middleware.AuthMiddleware, controller.DeleteUser)

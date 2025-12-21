@@ -51,9 +51,11 @@ func CreateCheckout (c *fiber.Ctx) error {
 	
 	var order models.Order
 	if err := database.Database.DB.
-	Select("id").
+	Select("id", "total_order", "quantity", "user_refer", "product_refer", "status").
 	Preload("Product").
-	Preload("User").Find(&order, "id = ?", checkoutParams.OrderRefer).Error; err != nil {
+	Where("id = ?").
+	Preload("User").
+	First(&order, checkoutParams.OrderRefer).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -158,8 +160,9 @@ func GetAllCheckout (c *fiber.Ctx) error {
 }
 func FindIdCheckout (id int, checkout *models.Checkout) error {
 	if err := database.Database.DB.
-	Select("id").
-	Find(&checkout, "id = ?", id); err != nil {
+	Select("id", "order_id", "nominal", "status").
+	Where("id = ?").
+	First(&checkout, id); err != nil {
 		return nil
 	}
 	if checkout.ID == 0 {
@@ -269,7 +272,11 @@ func UpdateCheckout (c *fiber.Ctx) error {
 	}
 
 	var order models.Order
-	if err := database.Database.DB.Preload("Product").Preload("User").Find(&order, "id = ?", checkout.OrderRefer).Error; err != nil {
+	if err := database.Database.DB.
+	Select("").
+	Preload("Product").
+	Preload("User").
+	First(&order, checkout.OrderRefer).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan id order!")
 	}
 
@@ -384,7 +391,7 @@ func BatchAllDeleteCheckout (c *fiber.Ctx) error {
 
 	var checkout models.Checkout
 	if err := tx.
-	Select("id").
+	Select("id", "order_id", "nominal", "status").
 	Where("id ? IN", paramsId).
 	Delete(&checkout).Error; err != nil {
 		tx.Rollback()

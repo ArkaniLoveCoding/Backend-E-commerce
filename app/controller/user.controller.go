@@ -62,7 +62,6 @@ func CreateUserNew (c *fiber.Ctx) error {
 
 	if err := database.Database.DB.
 	Select("email").
-	Where("email = ?").
 	Find(&models.User{}).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return utils.JsonWithError(c, fiber.StatusBadRequest, "Email sudah ada !")
@@ -147,8 +146,8 @@ func GetAllUser (c *fiber.Ctx) error {
 }
 func FindIdUser (id int, user *models.User) error {
 	if err := database.Database.DB.
-	Select("id").
-	Find(&user, "id = ?", id).Error; err != nil {
+	Select("id", "name", "password", "email", "role").Where("id = ?", id).
+	First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return errors.New("Gagal menemukan id!")
 		}
@@ -158,6 +157,29 @@ func FindIdUser (id int, user *models.User) error {
 		return errors.New("the user id does not exist")
 	}
 	return nil
+}
+
+// testing for the select method in gorm, 
+// we wants to know is works or not
+
+func GetOneUser (c *fiber.Ctx) error {
+	idParams, err := c.ParamsInt("id")
+	if err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal menemukan id!")
+	}
+
+	if idParams == 0 {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, "the id is does not exist in db!")
+	}
+
+	var users models.User
+	if err := FindIdUser(idParams, &users); err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	responseForUser := CreateUserResponse(users)
+
+	return utils.JsonWithSuccess(c, responseForUser, fiber.StatusOK, "Berhasil mendapatkan data dengan menggunakan id!")
 }
 func UpdateUser (c *fiber.Ctx) error {
 	type ParamsForUpdate struct {

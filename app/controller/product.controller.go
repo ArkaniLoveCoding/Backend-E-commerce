@@ -177,8 +177,9 @@ func GetAllProducts (c *fiber.Ctx) error {
 }
 func findID (id int, product *models.Product) error {
 	if err := database.Database.DB.
-	Select("id").
-	Find(&product, "id = ?", id).Error; err != nil {
+	Select("id", "name", "price", "stock", "expired", "serial_number", "category", "image", "status").
+	Where("id = ?", id).
+	Find(&product).Error; err != nil {
 		return errors.New(err.Error())
 	}
 	if product.ID == 0 {
@@ -198,6 +199,7 @@ func GetOneProduct (c *fiber.Ctx) error {
 	}
 	
 	responseProduct := CreateProductResponse(products)
+
 	return utils.JsonWithSuccess(c, responseProduct, fiber.StatusOK, "Berhasil mengambil salah satu data menggunakan id!")
 }
 func UpdateProduct (c *fiber.Ctx) error {
@@ -298,6 +300,10 @@ func PatchProduct (c *fiber.Ctx) error {
 	}
 
 	inputsResult := make(map[string]interface{})
+	if err := c.BodyParser(&inputsResult); err != nil {
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
 	price := c.FormValue("price")
 	stockStr := c.FormValue("stock")
 
@@ -384,7 +390,7 @@ func SeacrhProductFromStatus (c *fiber.Ctx) error {
 	var products []models.Product
 	
 	if err := database.Database.DB.
-	Select("status").
+	Select("status", "name", "price", "stock", "expired", "serial_number", "category", "image", "status").
 	Where("status ILIKE ?", "%"+keyword+"%").
     Find(&products).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mendapatkan data!")
@@ -405,7 +411,7 @@ func SearchProductFromName (c *fiber.Ctx) error {
 
 	var products []models.Product
 	if err := database.Database.DB.
-	Select("name").
+	Select("name", "price", "stock", "expired", "serial_number", "category", "image", "status").
 	Where("name ILIKE ?", "%"+paramsQuery+"%").
     Find(&products).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal mendapatkan data!")
