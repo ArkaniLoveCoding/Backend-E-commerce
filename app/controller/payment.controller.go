@@ -82,7 +82,10 @@ func CreateNewPayment (c *fiber.Ctx) error {
 
 	var orders models.Order
 	if err := database.Database.DB.
-	Preload("Product").Preload("User").First(&orders, int(body.OrderID)).Error; err != nil {
+	Preload("Product").
+	Preload("User").
+	Select("id").
+	First(&orders, int(body.OrderID)).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return utils.JsonWithError(c, fiber.StatusBadRequest, "Order tidak ditemukan!")
 		}
@@ -90,7 +93,9 @@ func CreateNewPayment (c *fiber.Ctx) error {
 	}
 
 	var checkouts models.Checkout
-	if err := database.Database.DB.Find(&checkouts, "id = ?" ,int(body.CheckoutID)).Error; err != nil {
+	if err := database.Database.DB.
+	Select("id").
+	Find(&checkouts, "id = ?" ,int(body.CheckoutID)).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ada!")
 		}
@@ -124,10 +129,14 @@ func CreateNewPayment (c *fiber.Ctx) error {
 
 	if err := tx.Create(&result).Error; err != nil {
 		tx.Rollback()
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal membuat data payment baru!")
+		}
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	if err := tx.Model(&models.Product{}).
+	if err := tx.
+	Model(&models.Product{}).
 	Where("id = ?", orders.ProductRefer).
 	Update("stock", gorm.Expr("stock - ?", orders.Quantity)).Error; err != nil {
 		tx.Rollback()
@@ -205,7 +214,9 @@ func WebHookForPayments (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	if err := database.Database.DB.Find(&payments, "checkout_id = ?", convertCheckoutId).Error; err != nil {
+	if err := database.Database.DB.
+	Select("checkout_id").
+	Find(&payments, "checkout_id = ?", convertCheckoutId).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return utils.JsonWithError(c, fiber.StatusBadRequest, "Checkout id tidak ditemukan!")
 		}
@@ -340,7 +351,8 @@ func WebHookForPayments (c *fiber.Ctx) error {
 			}
 	}
 
-	if err := database.Database.DB.Model(&payments).
+	if err := database.Database.DB.
+	Model(&payments).
 	Where("order_id = ?", convert).
 	Updates(map[string]interface{}{
 		"status": dbPaymentStatus,
@@ -350,5 +362,8 @@ func WebHookForPayments (c *fiber.Ctx) error {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return c.SendStatus(200)
+	return c.Status(200).JSON(fiber.Map{
+		"status": "success",
+		"isValid": "true",
+	})
 }
