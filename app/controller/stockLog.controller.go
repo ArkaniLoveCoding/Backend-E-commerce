@@ -85,6 +85,7 @@ func CreateNewNote (c *fiber.Ctx) error {
 
 	var payment models.Payment
 	if err := database.Database.DB.
+	Select("id").
 	Find(&payment, "id = ?", int(params.PaymentRefer)).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return utils.JsonWithError(c, fiber.StatusBadRequest, "Tidak menemukan Payment id!")
@@ -96,6 +97,7 @@ func CreateNewNote (c *fiber.Ctx) error {
 	if err := database.Database.DB.
 	Preload("Product").
 	Preload("User").
+	Select("id").
 	First(&orders, int(params.OrderRefer)).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return utils.JsonWithError(c, fiber.StatusBadRequest, "Tidak menemukan order id!")
@@ -117,6 +119,7 @@ func CreateNewNote (c *fiber.Ctx) error {
 	}
 
 	if err := database.Database.DB.
+	Select("status").
 	Where("status = ?", "success to paid!").
 	First(&payment, int(params.PaymentRefer)).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
@@ -129,6 +132,7 @@ func CreateNewNote (c *fiber.Ctx) error {
 
 	var products models.Product
 	if err := database.Database.DB.
+	Select("id").
 	Find(products, "id = ?", params.ProductRefer).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {
 			return utils.JsonWithError(c, fiber.StatusBadRequest, "Tidak menemukan product id!")
@@ -137,6 +141,7 @@ func CreateNewNote (c *fiber.Ctx) error {
 	}
 
 	var stock models.StockLog
+	
 	oldStock := products.Stock
 	newStock := products.Stock - orders.Quantity
 

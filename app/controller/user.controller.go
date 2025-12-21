@@ -59,6 +59,17 @@ func CreateUserNew (c *fiber.Ctx) error {
 			"details": errs,
 		})
 	}
+
+	if err := database.Database.DB.
+	Select("email").
+	Where("email = ?").
+	Find(&models.User{}).Error; err != nil {
+		if errors.Is(err, gorm.ErrInvalidField) {
+			return utils.JsonWithError(c, fiber.StatusBadRequest, "Email sudah ada !")
+		}
+		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
+	}
+
 	hash, err := utils.GenerateAndHashPassword(params.Password)
 	if err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, "Gagal melakukan hash password!")
