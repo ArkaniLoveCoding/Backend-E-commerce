@@ -53,9 +53,9 @@ func CreateCheckout (c *fiber.Ctx) error {
 	if err := database.Database.DB.
 	Select("id", "total_order", "quantity", "user_refer", "product_refer", "status").
 	Preload("Product").
-	Where("id = ?").
+	Where("id = ?", checkoutParams.OrderRefer).
 	Preload("User").
-	First(&order, checkoutParams.OrderRefer).Error; err != nil {
+	First(&order).Error; err != nil {
 		return utils.JsonWithError(c, fiber.StatusBadRequest, err.Error())
 	}
 

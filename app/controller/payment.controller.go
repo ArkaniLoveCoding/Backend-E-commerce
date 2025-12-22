@@ -95,7 +95,7 @@ func CreateNewPayment (c *fiber.Ctx) error {
 
 	var checkouts models.Checkout
 	if err := database.Database.DB.
-	Select("id", "order_id", "nominal", "status").
+	Select("id", "order_refer", "nominal", "status").
 	Where("id = ?", int(body.CheckoutID)).
 	First(&checkouts).Error; err != nil {
 		if errors.Is(err, gorm.ErrInvalidField) {

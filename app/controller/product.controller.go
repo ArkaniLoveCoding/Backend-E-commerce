@@ -177,7 +177,7 @@ func GetAllProducts (c *fiber.Ctx) error {
 }
 func findID (id int, product *models.Product) error {
 	if err := database.Database.DB.
-	Select("id", "name", "price", "stock", "expired", "serial_number", "category", "image", "status").
+	Select("id", "name", "price", "stock", "expired", "serialnumber", "category", "image", "status").
 	Where("id = ?", id).
 	Find(&product).Error; err != nil {
 		return errors.New(err.Error())
