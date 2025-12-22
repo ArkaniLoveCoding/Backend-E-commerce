@@ -82,7 +82,7 @@ func CreateNewPayment (c *fiber.Ctx) error {
 
 	var orders models.Order
 	if err := database.Database.DB.
-	Select("id", "total_order", "quantity", "user_refer", "product_refer").
+	Select("id", "total_order", "quantity", "user_refer", "product_refer", "status").
 	Where("id = ?", int(body.OrderID)).
 	Preload("Product").
 	Preload("User").
